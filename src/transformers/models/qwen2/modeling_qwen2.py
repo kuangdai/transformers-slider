@@ -564,7 +564,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
             slider_variables.append(slider_var)
 
             # Set attention mask to ignore slider prefix
-            attention_mask[i, :pm_index] = 0
+            attention_mask[i, :pm_index + 1] = 0
 
         # Stack and convert to tensor
         slider_variables = np.stack(slider_variables, axis=0)
