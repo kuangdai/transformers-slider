@@ -203,7 +203,9 @@ class Qwen2Attention(nn.Module):
             **kwargs,
         )
 
-        # slider attention
+        ##########
+        # SLIDER #
+        ##########
         if slider_key_value is not None:
             slider_key, slider_value = slider_key_value
             slider_key = repeat_kv(slider_key, self.num_key_value_groups)
@@ -245,6 +247,9 @@ class Qwen2DecoderLayer(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
 
+        ##########
+        # SLIDER #
+        ##########
         self.slider = None
         if config.slider_on:
             self.slider = SliderModel(
@@ -282,6 +287,9 @@ class Qwen2DecoderLayer(nn.Module):
 
         hidden_states = self.input_layernorm(hidden_states)
 
+        ##########
+        # SLIDER #
+        ##########
         slider_kv = None
         if slider_variables is not None:
             slider_kv = self.slider(slider_variables)
@@ -414,7 +422,7 @@ class Qwen2PreTrainedModel(PreTrainedModel):
         std = self.config.initializer_range
 
         # Skip reinitialization for slider-related modules
-        if hasattr(module, "last_layer_in_slider"):
+        if hasattr(module, "last_layer_of_value_encoder_in_slider"):
             module.weight.data.zero_()
             if module.bias is not None:
                 module.bias.data.zero_()
@@ -543,6 +551,9 @@ class Qwen2Model(Qwen2PreTrainedModel):
     def set_tokenizer(self, tokenizer):
         self.tokenizer = tokenizer
 
+    ##########
+    # SLIDER #
+    ##########
     def process_inputs_for_sliders(self, input_ids: torch.LongTensor = None,
                                    attention_mask: Optional[torch.Tensor] = None,
                                    position_ids: Optional[torch.LongTensor] = None,
@@ -634,6 +645,9 @@ class Qwen2Model(Qwen2PreTrainedModel):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        ##########
+        # SLIDER #
+        ##########
         if self.config.slider_on:
             assert input_ids is not None, "Slider only supports ID inputs."
             if past_key_values is None or len(past_key_values) == 0:
