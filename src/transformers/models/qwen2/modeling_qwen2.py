@@ -206,7 +206,8 @@ class Qwen2Attention(nn.Module):
         ##########
         # SLIDER #
         ##########
-        if slider_key_value is not None:
+        if self.config.slider_on:
+            assert slider_key_value is not None
             slider_key, slider_value = slider_key_value
             slider_key = repeat_kv(slider_key, self.num_key_value_groups)
             slider_value = repeat_kv(slider_value, self.num_key_value_groups)
@@ -291,7 +292,8 @@ class Qwen2DecoderLayer(nn.Module):
         # SLIDER #
         ##########
         slider_kv = None
-        if slider_variables is not None:
+        if self.slider is not None:
+            assert slider_variables is not None
             slider_kv = self.slider(slider_variables)
 
         # Self Attention
