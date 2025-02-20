@@ -532,6 +532,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
         self.post_init()
 
         self.tokenizer = None
+        self.slider_variables = None
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -544,7 +545,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
 
     def process_inputs_for_sliders(self, input_ids: torch.LongTensor = None,
                                    attention_mask: Optional[torch.Tensor] = None):
-        if input_ids is None or not self.config.slider_on:
+        if input_ids is None:
             return None, attention_mask
 
         # Encode `±` to find its token ID
@@ -597,8 +598,14 @@ class Qwen2Model(Qwen2PreTrainedModel):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        slider_variables, attention_mask = self.process_inputs_for_sliders(
-            input_ids, attention_mask)
+        if self.config.slider_on:
+            if past_key_values is None:
+                self.slider_variables, attention_mask = self.process_inputs_for_sliders(
+                    input_ids, attention_mask)
+            else:
+                assert use_cache  # ensure the workflow consistency
+        else:
+            self.slider_variables = None
 
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -652,7 +659,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
                     use_cache,
                     cache_position,
                     position_embeddings,
-                    slider_variables=slider_variables,
+                    slider_variables=self.slider_variables,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -664,7 +671,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
                     use_cache=use_cache,
                     cache_position=cache_position,
                     position_embeddings=position_embeddings,
-                    slider_variables=slider_variables,
+                    slider_variables=self.slider_variables,
                     **flash_attn_kwargs,
                 )
 
