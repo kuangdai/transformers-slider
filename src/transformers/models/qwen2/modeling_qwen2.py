@@ -421,6 +421,9 @@ class Qwen2PreTrainedModel(PreTrainedModel):
     def _init_weights(self, module):
         std = self.config.initializer_range
 
+        ##########
+        # SLIDER #
+        ##########
         # Skip reinitialization for slider-related modules
         if hasattr(module, "last_layer_of_value_encoder_in_slider"):
             module.weight.data.zero_()
