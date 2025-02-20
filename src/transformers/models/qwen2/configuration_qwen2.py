@@ -113,6 +113,13 @@ class Qwen2Config(PretrainedConfig):
         attention_dropout (`float`, *optional*, defaults to 0.0):
             The dropout ratio for the attention probabilities.
 
+        slider_on (bool): Turn on slider.
+        slider_attn_factor (float): Factor of slider attention.
+        slider_n_variables (int): Number of slider variables.
+        slider_n_hidden (int): Hidden layer size in the prefix encoder.
+        slider_n_heads_sharing_slider (int): Number of base heads sharing one slider head.
+        slider_dropout (float): Dropout rate in the prefix encoder.
+
     ```python
     >>> from transformers import Qwen2Model, Qwen2Config
 
@@ -165,6 +172,15 @@ class Qwen2Config(PretrainedConfig):
         sliding_window=4096,
         max_window_layers=28,
         attention_dropout=0.0,
+
+
+        slider_on=False,
+        slider_attn_factor=1.0,
+        slider_n_variables=3,
+        slider_n_hidden=256,
+        slider_n_heads_sharing_slider=2,
+        slider_dropout=0.1,
+
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -194,6 +210,13 @@ class Qwen2Config(PretrainedConfig):
         if self.rope_scaling is not None and "type" in self.rope_scaling:
             self.rope_scaling["rope_type"] = self.rope_scaling["type"]
         rope_config_validation(self)
+
+        self.slider_on = slider_on
+        self.slider_attn_factor = slider_attn_factor
+        self.slider_n_variables = slider_n_variables
+        self.slider_n_hidden = slider_n_hidden
+        self.slider_n_heads_sharing_slider = slider_n_heads_sharing_slider
+        self.slider_dropout = slider_dropout
 
         super().__init__(
             tie_word_embeddings=tie_word_embeddings,
