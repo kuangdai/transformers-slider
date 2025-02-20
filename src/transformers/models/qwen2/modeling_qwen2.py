@@ -203,9 +203,9 @@ class Qwen2Attention(nn.Module):
             **kwargs,
         )
 
-        ##########
-        # SLIDER #
-        ##########
+        ####################
+        # SLIDER ATTENTION #
+        ####################
         if self.config.slider_on:
             assert slider_key_value is not None
             slider_key, slider_value = slider_key_value
@@ -248,9 +248,9 @@ class Qwen2DecoderLayer(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
 
-        ##########
-        # SLIDER #
-        ##########
+        ################
+        # SLIDER MODEL #
+        ################
         self.slider = None
         if config.slider_on:
             self.slider = SliderModel(
@@ -288,9 +288,9 @@ class Qwen2DecoderLayer(nn.Module):
 
         hidden_states = self.input_layernorm(hidden_states)
 
-        ##########
-        # SLIDER #
-        ##########
+        ###################
+        # SLIDER ENCODING #
+        ###################
         slider_kv = None
         if self.slider is not None:
             assert slider_variables is not None
@@ -423,9 +423,9 @@ class Qwen2PreTrainedModel(PreTrainedModel):
     def _init_weights(self, module):
         std = self.config.initializer_range
 
-        ##########
-        # SLIDER #
-        ##########
+        ##############
+        # SLIDER INIT#
+        ##############
         # Skip reinitialization for slider-related modules
         if hasattr(module, "last_layer_of_value_encoder_in_slider"):
             module.weight.data.zero_()
@@ -544,9 +544,9 @@ class Qwen2Model(Qwen2PreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-        ##########
-        # SLIDER #
-        ##########
+        ##################
+        # SLIDER PROCESS #
+        ##################
         self.tokenizer = None
         self.slider_variables = None
         self.pm_locations = None
@@ -560,9 +560,9 @@ class Qwen2Model(Qwen2PreTrainedModel):
     def set_tokenizer(self, tokenizer):
         self.tokenizer = tokenizer
 
-    ##########
-    # SLIDER #
-    ##########
+    ##################
+    # SLIDER PROCESS #
+    ##################
     def process_inputs_for_sliders_initial(self, input_ids: torch.LongTensor = None,
                                            attention_mask: Optional[torch.Tensor] = None,
                                            position_ids: Optional[torch.LongTensor] = None,
