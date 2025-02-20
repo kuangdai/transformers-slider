@@ -546,35 +546,54 @@ class Qwen2Model(Qwen2PreTrainedModel):
     def process_inputs_for_sliders(self, input_ids: torch.LongTensor = None,
                                    attention_mask: Optional[torch.Tensor] = None):
         if input_ids is None:
-            return None, attention_mask
+            return None, attention_mask, input_ids
 
         # Encode `±` to find its token ID
         pm_token_id = self.tokenizer.encode("±", add_special_tokens=False)[0]
 
         slider_variables = []
+        new_input_ids = []
+        new_attention_mask = []
+
         for i, ids in enumerate(input_ids):
-            # Find the index of `±` directly in `input_ids`
-            try:
-                pm_index = (ids == pm_token_id).nonzero(as_tuple=True)[0][0].item()
-            except IndexError:
+            # Find the index of `±` in `input_ids`
+            pm_indices = (ids == pm_token_id).nonzero(as_tuple=True)[0]
+
+            if pm_indices.numel() == 0:
                 raise ValueError(f"± not found in input_ids for batch {i}")
+
+            pm_index = pm_indices[0].item()
 
             # Extract slider variable values (before `±`)
             slider_text = self.tokenizer.decode(ids[:pm_index], skip_special_tokens=True)
-            slider_var = np.array(slider_text.split(",")).astype(float)
+            slider_var = np.array(slider_text.split(","), dtype=float)
             slider_variables.append(slider_var)
 
-            # Set attention mask to ignore slider prefix
-            attention_mask[i, :pm_index + 1] = 0
+            # Keep only tokens **after** `±`
+            truncated_ids = ids[pm_index + 1:]
 
-        # Stack and convert to tensor
+            # Adjust attention mask accordingly
+            truncated_mask = attention_mask[i, pm_index + 1:]
+
+            # Store truncated sequences
+            new_input_ids.append(truncated_ids)
+            new_attention_mask.append(truncated_mask)
+
+        # Convert slider variables to a tensor
         slider_variables = np.stack(slider_variables, axis=0)
         slider_variables = torch.tensor(slider_variables, dtype=torch.float32, device=input_ids.device)
+
         # Ensure correct shape
         assert slider_variables.shape[1] == self.config.slider_n_variables, \
             f"Expected {self.config.slider_n_variables} slider variables, got {slider_variables.shape[1]}"
 
-        return slider_variables, attention_mask
+        # Left-pad new `input_ids` and `attention_mask` to align batch sizes
+        new_input_ids = torch.nn.utils.rnn.pad_sequence(new_input_ids, batch_first=True,
+                                                        padding_value=self.tokenizer.pad_token_id)
+        new_input_ids = new_input_ids.to(input_ids.device)
+        new_attention_mask = torch.nn.utils.rnn.pad_sequence(new_attention_mask, batch_first=True, padding_value=0)
+
+        return slider_variables, new_input_ids, new_attention_mask
 
     @add_start_docstrings_to_model_forward(QWEN2_INPUTS_DOCSTRING)
     def forward(
@@ -600,7 +619,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
 
         if self.config.slider_on:
             if past_key_values is None:
-                self.slider_variables, attention_mask = self.process_inputs_for_sliders(
+                self.slider_variables, input_ids, attention_mask = self.process_inputs_for_sliders(
                     input_ids, attention_mask)
             else:
                 assert use_cache  # ensure the workflow consistency
