@@ -588,6 +588,8 @@ class Qwen2Model(Qwen2PreTrainedModel):
             # Extract slider variable values (before `±`)
             slider_text = self.tokenizer.decode(ids[:pm_index], skip_special_tokens=True)
             slider_var = np.array(slider_text.split(","), dtype=float)
+            assert slider_var.shape[0] == self.config.slider_n_variables, \
+                f"Expected {self.config.slider_n_variables} slider variables, got {slider_var.shape[0]}"
             slider_variables.append(slider_var)
 
             # Keep only tokens **after** `±`
@@ -607,10 +609,6 @@ class Qwen2Model(Qwen2PreTrainedModel):
         # Convert slider variables to a tensor
         slider_variables = np.stack(slider_variables, axis=0)
         slider_variables = torch.tensor(slider_variables, dtype=torch.float32, device=input_ids.device)
-
-        # Ensure correct shape
-        assert slider_variables.shape[1] == self.config.slider_n_variables, \
-            f"Expected {self.config.slider_n_variables} slider variables, got {slider_variables.shape[1]}"
 
         # **Use PyTorch's built-in left padding**
         new_input_ids = torch.nn.utils.rnn.pad_sequence(new_input_ids, batch_first=True,
@@ -638,10 +636,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
     def process_inputs_for_sliders_continue(self, attention_mask: Optional[torch.Tensor] = None,
                                             position_ids: Optional[torch.LongTensor] = None,
                                             cache_position: Optional[torch.LongTensor] = None):
-        """
-        Updates attention_mask, position_ids, and cache_position for continued forward passes.
-        """
-        # Check strictly to avoid side effects
+        # Check inputs strictly to avoid side effects
         assert attention_mask is not None, "Impossible."
         assert position_ids is not None, "Impossible."
         assert cache_position is not None, "Impossible."
@@ -695,12 +690,12 @@ class Qwen2Model(Qwen2PreTrainedModel):
             if past_key_values is None or len(past_key_values) == 0:
                 # Use cases:
                 # 1. Not using cache
-                # 2. First time forward when using cache
+                # 2. Using cache, but this is the first forward (cache is empty)
                 (self.slider_variables, self.pm_locations, input_ids,
                  attention_mask, position_ids, cache_position) = self.process_inputs_for_sliders_initial(
                     input_ids, attention_mask, position_ids, cache_position)
             else:
-                # Use case: Second+ times forward when using cache
+                # Use case: Using cache, and this is not the first forward
                 attention_mask, position_ids, cache_position = self.process_inputs_for_sliders_continue(
                     attention_mask, position_ids, cache_position)
         else:
