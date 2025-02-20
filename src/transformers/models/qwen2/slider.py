@@ -107,6 +107,6 @@ class SliderModel(nn.Module):
 
         # Merge keys and values along dim=0 (first dimension) to match expected shape
         # Final shape: [2, batch_size, n_base_heads, seq_len, n_token_dim]
-        slider_kv = torch.stack([slider_keys, slider_values], dim=0)
+        slider_kv = torch.stack([slider_keys, slider_values], dim=0).permute(0, 1, 3, 2, 4)
 
         return slider_kv
