@@ -607,7 +607,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
 
         # Modify `cache_position`
         if cache_position is not None:
-            new_cache_position = torch.arange(input_ids.shape[1], dtype=torch.long, device=input_ids.device)
+            new_cache_position = torch.arange(new_input_ids.shape[1], dtype=torch.long, device=input_ids.device)
         else:
             new_cache_position = None
         return slider_variables, new_input_ids, new_attention_mask, new_position_ids, new_cache_position
