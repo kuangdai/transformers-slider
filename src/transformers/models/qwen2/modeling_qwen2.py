@@ -635,7 +635,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if self.config.slider_on:
-            assert input_ids is None, "Slider only supports ID inputs."
+            assert input_ids is not None, "Slider only supports ID inputs."
             if past_key_values is None or len(past_key_values) == 0:
                 self.slider_variables, input_ids, attention_mask, position_ids, cache_position = (
                     self.process_inputs_for_sliders(input_ids, attention_mask, position_ids, cache_position))
