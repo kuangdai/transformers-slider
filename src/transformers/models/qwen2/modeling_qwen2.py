@@ -427,8 +427,7 @@ class Qwen2PreTrainedModel(PreTrainedModel):
         # SLIDER INIT#
         ##############
         # Skip reinitialization for slider-related modules
-        # Deprecated. No effect.
-        if hasattr(module, "last_layer_of_value_encoder_in_slider"):
+        if hasattr(module, "SLIDER_DO_NOT_REINITIALIZE"):
             module.weight.data.zero_()
             if module.bias is not None:
                 module.bias.data.zero_()

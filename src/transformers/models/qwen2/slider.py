@@ -63,6 +63,7 @@ class SliderModel(nn.Module):
 
         # Define attention factor
         self.attention_factor = nn.Linear(1, 1, bias=False)
+        self.attention_factor.SLIDER_DO_NOT_REINITIALIZE = True
 
     def forward(self, prefix: torch.Tensor):
         """
