@@ -155,7 +155,7 @@ class Qwen2Attention(nn.Module):
             attention_mask: Optional[torch.Tensor],
             past_key_value: Optional[Cache] = None,
             cache_position: Optional[torch.LongTensor] = None,
-            slider_key_value: torch.Tensor = None,
+            slider_key_value_factor=None,
             **kwargs: Unpack[FlashAttentionKwargs],
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         input_shape = hidden_states.shape[:-1]
@@ -207,8 +207,8 @@ class Qwen2Attention(nn.Module):
         # SLIDER ATTENTION #
         ####################
         if self.config.slider_on:
-            assert slider_key_value is not None
-            slider_key, slider_value = slider_key_value
+            assert slider_key_value_factor is not None
+            slider_key, slider_value, slider_factor = slider_key_value_factor
             slider_key = repeat_kv(slider_key, self.num_key_value_groups)
             slider_value = repeat_kv(slider_value, self.num_key_value_groups)
             slider_attn_weights = torch.einsum("BHNZ,BHMZ->BHNM", query_states, slider_key)
@@ -216,7 +216,7 @@ class Qwen2Attention(nn.Module):
                                                 dim=-1)
             slider_attn_output = torch.einsum("BHNM,BHMZ->BHNZ", slider_attn_weights, slider_value)
             slider_attn_output = slider_attn_output.permute(0, 2, 1, 3)
-            attn_output = attn_output + slider_attn_output * self.config.slider_attn_factor
+            attn_output = attn_output + slider_attn_output * slider_factor
 
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
@@ -291,10 +291,10 @@ class Qwen2DecoderLayer(nn.Module):
         ###################
         # SLIDER ENCODING #
         ###################
-        slider_kv = None
+        slider_key_value_factor = None
         if self.slider is not None:
             assert slider_variables is not None
-            slider_kv = self.slider(slider_variables)
+            slider_key_value_factor = self.slider(slider_variables)
 
         # Self Attention
         hidden_states, self_attn_weights = self.self_attn(
@@ -306,7 +306,7 @@ class Qwen2DecoderLayer(nn.Module):
             use_cache=use_cache,
             cache_position=cache_position,
             position_embeddings=position_embeddings,
-            slider_key_value=slider_kv,
+            slider_key_value_factor=slider_key_value_factor,
             **kwargs,
         )
         hidden_states = residual + hidden_states
@@ -427,6 +427,7 @@ class Qwen2PreTrainedModel(PreTrainedModel):
         # SLIDER INIT#
         ##############
         # Skip reinitialization for slider-related modules
+        # Deprecated. No effect.
         if hasattr(module, "last_layer_of_value_encoder_in_slider"):
             module.weight.data.zero_()
             if module.bias is not None:
@@ -682,9 +683,9 @@ class Qwen2Model(Qwen2PreTrainedModel):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        ##########
-        # SLIDER #
-        ##########
+        ##################
+        # SLIDER PROCESS #
+        ##################
         if self.config.slider_on:
             assert input_ids is not None, "Slider only supports ID inputs."
             if past_key_values is None or len(past_key_values) == 0:

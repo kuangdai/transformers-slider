@@ -61,9 +61,8 @@ class SliderModel(nn.Module):
             ) for _ in range(self.n_variables)
         ])
 
-        # Ensure the last linear layers in each encoder produce zero outputs by default
-        for i_var in range(self.n_variables):
-            self.value_encoders[i_var][-1].last_layer_of_value_encoder_in_slider = True
+        # Define attention factor
+        self.attention_factor = nn.Parameter(torch.tensor(0.0))
 
     def forward(self, prefix: torch.Tensor):
         """
@@ -105,8 +104,7 @@ class SliderModel(nn.Module):
         slider_keys = slider_keys.repeat_interleave(self.n_heads_sharing_slider, dim=2)
         slider_values = slider_values.repeat_interleave(self.n_heads_sharing_slider, dim=2)
 
-        # Merge keys and values along dim=0 (first dimension) to match expected shape
-        # Final shape: [2, batch_size, n_base_heads, seq_len, n_token_dim]
-        slider_kv = torch.stack([slider_keys, slider_values], dim=0).permute(0, 1, 3, 2, 4)
-
-        return slider_kv
+        # Final shape: [batch_size, n_base_heads, seq_len, n_token_dim]
+        slider_keys = slider_keys.permute(0, 2, 1, 3)
+        slider_values = slider_values.permute(0, 2, 1, 3)
+        return slider_keys, slider_values, self.attention_factor
