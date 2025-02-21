@@ -1064,6 +1064,11 @@ class Qwen2ForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
 
         loss = None
         if labels is not None:
+            ###############
+            # SLIDER LOSS #
+            ###############
+            # Truncate slider tokens
+            labels = labels[:, labels.shape[1] - logits.shape[1]:]
             loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
 
         if not return_dict:
