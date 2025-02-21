@@ -762,7 +762,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
                     use_cache,
                     cache_position,
                     position_embeddings,
-                    slider_variables=self.slider_variables,
+                    self.slider_variables,
                 )
             else:
                 layer_outputs = decoder_layer(
