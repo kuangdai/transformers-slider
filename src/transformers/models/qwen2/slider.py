@@ -62,7 +62,7 @@ class SliderModel(nn.Module):
         ])
 
         # Define attention factor
-        self.attention_factor = nn.Parameter(torch.tensor(0.0))
+        self.attention_factor = nn.Linear(1, 1, bias=False)
 
     def forward(self, prefix: torch.Tensor):
         """
@@ -107,4 +107,4 @@ class SliderModel(nn.Module):
         # Final shape: [batch_size, n_base_heads, seq_len, n_token_dim]
         slider_keys = slider_keys.permute(0, 2, 1, 3)
         slider_values = slider_values.permute(0, 2, 1, 3)
-        return slider_keys, slider_values, self.attention_factor
+        return slider_keys, slider_values, self.attention_factor.weight[0, 0]
