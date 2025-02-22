@@ -36,16 +36,16 @@ class SliderModel(nn.Module):
         self.kv_size = 2 * self.n_token_dim * self.n_slider_heads  # Merged KV size
 
         # Independent weight matrices for each variable (each maps R^1 -> R^kv_size)
-        self.encode_w = nn.Parameter(torch.randn(n_variables, self.kv_size, 1))  # [n_variables, kv_size, 1]
-        self.encode_b = nn.Parameter(torch.randn(n_variables, self.kv_size))  # [n_variables, kv_size]
+        self.encode_w = nn.Parameter(torch.randn(n_variables, self.kv_size, 1))
+        self.encode_b = nn.Parameter(torch.randn(1, n_variables, self.kv_size))
 
         # Hidden layer transformation per variable
-        self.upscale_w = nn.Parameter(torch.randn(n_variables, n_hidden, self.kv_size))  # [n_variables, n_hidden, kv_size]
-        self.upscale_b = nn.Parameter(torch.randn(n_variables, n_hidden))  # [n_variables, n_hidden]
+        self.upscale_w = nn.Parameter(torch.randn(n_variables, n_hidden, self.kv_size))
+        self.upscale_b = nn.Parameter(torch.randn(1, n_variables, n_hidden))
 
         # Final output transformation per variable
-        self.downscale_w = nn.Parameter(torch.randn(n_variables, self.kv_size, n_hidden))  # [n_variables, kv_size, n_hidden]
-        self.downscale_b = nn.Parameter(torch.randn(n_variables, self.kv_size))  # [n_variables, kv_size]
+        self.downscale_w = nn.Parameter(torch.randn(n_variables, self.kv_size, n_hidden))
+        self.downscale_b = nn.Parameter(torch.randn(1, n_variables, self.kv_size))
 
         # Define attention factor
         self.attention_factor = nn.Linear(1, 1, bias=False)
@@ -75,17 +75,17 @@ class SliderModel(nn.Module):
         prefix = prefix.unsqueeze(-1)  # Shape: [batch_size, n_variables, 1]
 
         # Independent linear transformation for each variable
-        slider_kv = torch.matmul(self.encode_w, prefix).squeeze(-1) + self.encode_b  # [batch_size, n_variables, kv_size]
+        slider_kv = torch.einsum("VKI,BVI->BVK", self.encode_w, prefix) + self.encode_b
         slider_kv = self.tanh(slider_kv)
         slider_kv = self.dropout(slider_kv)
 
         # Hidden layer transformation
-        slider_kv = torch.matmul(self.upscale_w, slider_kv.unsqueeze(-1)).squeeze(-1) + self.upscale_b  # [batch_size, n_variables, n_hidden]
+        slider_kv = torch.einsum("VHK,BVK->BVH", self.upscale_w, slider_kv) + self.upscale_b
         slider_kv = self.tanh(slider_kv)
         slider_kv = self.dropout(slider_kv)
 
         # Final transformation
-        slider_kv = torch.matmul(self.downscale_w, slider_kv.unsqueeze(-1)).squeeze(-1) + self.downscale_b  # [batch_size, n_variables, kv_size]
+        slider_kv = torch.einsum("VKH,BVH->BVK", self.downscale_w, slider_kv) + self.downscale_b
 
         # Reshape to separate keys and values
         # Shape: [batch_size, n_variables, 2, n_slider_heads, n_token_dim]
@@ -94,7 +94,7 @@ class SliderModel(nn.Module):
         # Expand `n_slider_heads` across `n_base_heads`
         slider_kv = slider_kv.repeat_interleave(self.n_heads_sharing_slider, dim=3)
 
-        # Permute for attention format: [batch_size, n_base_heads, seq_len, n_token_dim]
+        # Permute for attention format: [batch_size, n_base_heads, seq_len, n_token_dim, 2]
         slider_kv = slider_kv.permute(0, 3, 1, 4, 2)  # Move slider head dim before sequence length
 
         # Split into keys and values along the last dimension
