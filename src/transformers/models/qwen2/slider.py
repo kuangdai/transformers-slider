@@ -22,48 +22,38 @@ class SliderModel(nn.Module):
         self.n_variables = n_variables
         self.n_hidden = n_hidden
         self.n_heads_sharing_slider = n_heads_sharing_slider
-        self.dropout = dropout
-
-        # Ensure that the number of base heads is evenly divided by the slider-sharing factor
         self.n_base_heads = n_base_heads
         self.n_token_dim = n_token_dim
+
+        # Ensure `n_base_heads` is evenly divisible by `n_heads_sharing_slider`
         assert self.n_base_heads % self.n_heads_sharing_slider == 0, \
             "n_base_heads must be divisible by n_heads_sharing_slider."
 
-        # Compute the number of slider-specific attention heads
+        # Compute number of slider-specific attention heads
         self.n_slider_heads = self.n_base_heads // self.n_heads_sharing_slider
 
-        # Define output size for key and value separately
-        self.kv_size = self.n_token_dim * self.n_slider_heads
+        # Define the output size for combined key and value
+        self.kv_size = 2 * self.n_token_dim * self.n_slider_heads  # Merged KV size
 
-        # Define separate prefix encoders for keys and values
-        self.key_encoders = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(1, self.kv_size),
-                nn.Tanh(),
-                nn.Dropout(self.dropout),
-                nn.Linear(self.kv_size, self.n_hidden),
-                nn.Tanh(),
-                nn.Dropout(self.dropout),
-                nn.Linear(self.n_hidden, self.kv_size)  # Final output for keys
-            ) for _ in range(self.n_variables)
-        ])
+        # Independent weight matrices for each variable (each maps R^1 -> R^kv_size)
+        self.encode_w = nn.Parameter(torch.randn(n_variables, self.kv_size, 1))  # [n_variables, kv_size, 1]
+        self.encode_b = nn.Parameter(torch.randn(n_variables, self.kv_size))  # [n_variables, kv_size]
 
-        self.value_encoders = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(1, self.kv_size),
-                nn.Tanh(),
-                nn.Dropout(self.dropout),
-                nn.Linear(self.kv_size, self.n_hidden),
-                nn.Tanh(),
-                nn.Dropout(self.dropout),
-                nn.Linear(self.n_hidden, self.kv_size)  # Final output for values
-            ) for _ in range(self.n_variables)
-        ])
+        # Hidden layer transformation per variable
+        self.upscale_w = nn.Parameter(torch.randn(n_variables, n_hidden, self.kv_size))  # [n_variables, n_hidden, kv_size]
+        self.upscale_b = nn.Parameter(torch.randn(n_variables, n_hidden))  # [n_variables, n_hidden]
+
+        # Final output transformation per variable
+        self.downscale_w = nn.Parameter(torch.randn(n_variables, self.kv_size, n_hidden))  # [n_variables, kv_size, n_hidden]
+        self.downscale_b = nn.Parameter(torch.randn(n_variables, self.kv_size))  # [n_variables, kv_size]
 
         # Define attention factor
         self.attention_factor = nn.Linear(1, 1, bias=False)
         self.attention_factor.SLIDER_DO_NOT_REINITIALIZE = True
+
+        # Activation and dropout layers
+        self.tanh = nn.Tanh()
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, prefix: torch.Tensor):
         """
@@ -77,35 +67,37 @@ class SliderModel(nn.Module):
         """
 
         # Move input to the same device and dtype as the model parameters
-        device = next(self.key_encoders[0][-1].parameters()).device
-        dtype = next(self.key_encoders[0][-1].parameters()).dtype
+        device = self.encode_w.device
+        dtype = self.encode_w.dtype
         prefix = prefix.to(device=device, dtype=dtype)
 
-        # Compute key representations for each slider variable
-        slider_keys = torch.stack(
-            [self.key_encoders[i_var](prefix[:, i_var:i_var + 1])  # Pass scalar slider values
-             for i_var in range(self.n_variables)],
-            dim=1  # Stack along the variable dimension
-        )
+        # Reshape input to [batch_size, n_variables, 1] for matrix multiplication
+        prefix = prefix.unsqueeze(-1)  # Shape: [batch_size, n_variables, 1]
 
-        # Compute value representations for each slider variable
-        slider_values = torch.stack(
-            [self.value_encoders[i_var](prefix[:, i_var:i_var + 1])  # Pass scalar slider values
-             for i_var in range(self.n_variables)],
-            dim=1
-        )
+        # Independent linear transformation for each variable
+        slider_kv = torch.matmul(self.encode_w, prefix).squeeze(-1) + self.encode_b  # [batch_size, n_variables, kv_size]
+        slider_kv = self.tanh(slider_kv)
+        slider_kv = self.dropout(slider_kv)
 
-        # Reshape both keys and values to match attention dimensions
-        # Shape: [batch_size, n_variables, n_slider_heads, n_token_dim]
-        slider_keys = slider_keys.reshape(prefix.shape[0], self.n_variables, self.n_slider_heads, self.n_token_dim)
-        slider_values = slider_values.reshape(prefix.shape[0], self.n_variables, self.n_slider_heads, self.n_token_dim)
+        # Hidden layer transformation
+        slider_kv = torch.matmul(self.upscale_w, slider_kv.unsqueeze(-1)).squeeze(-1) + self.upscale_b  # [batch_size, n_variables, n_hidden]
+        slider_kv = self.tanh(slider_kv)
+        slider_kv = self.dropout(slider_kv)
 
-        # Expand across attention heads to match `n_base_heads`
-        # Repeat each slider head across `n_heads_sharing_slider` heads
-        slider_keys = slider_keys.repeat_interleave(self.n_heads_sharing_slider, dim=2)
-        slider_values = slider_values.repeat_interleave(self.n_heads_sharing_slider, dim=2)
+        # Final transformation
+        slider_kv = torch.matmul(self.downscale_w, slider_kv.unsqueeze(-1)).squeeze(-1) + self.downscale_b  # [batch_size, n_variables, kv_size]
 
-        # Final shape: [batch_size, n_base_heads, seq_len, n_token_dim]
-        slider_keys = slider_keys.permute(0, 2, 1, 3)
-        slider_values = slider_values.permute(0, 2, 1, 3)
+        # Reshape to separate keys and values
+        # Shape: [batch_size, n_variables, 2, n_slider_heads, n_token_dim]
+        slider_kv = slider_kv.view(prefix.shape[0], self.n_variables, 2, self.n_slider_heads, self.n_token_dim)
+
+        # Expand `n_slider_heads` across `n_base_heads`
+        slider_kv = slider_kv.repeat_interleave(self.n_heads_sharing_slider, dim=3)
+
+        # Permute for attention format: [batch_size, n_base_heads, seq_len, n_token_dim]
+        slider_kv = slider_kv.permute(0, 3, 1, 4, 2)  # Move slider head dim before sequence length
+
+        # Split into keys and values along the last dimension
+        slider_keys, slider_values = slider_kv[..., 0], slider_kv[..., 1]
+
         return slider_keys, slider_values, self.attention_factor.weight[0, 0]
