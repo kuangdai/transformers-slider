@@ -36,16 +36,19 @@ class SliderModel(nn.Module):
         self.kv_size = 2 * self.n_token_dim * self.n_slider_heads  # Merged KV size
 
         # Independent weight matrices for each variable (each maps R^1 -> R^kv_size)
-        self.encode_w = nn.Parameter(torch.randn(n_variables, self.kv_size, 1))
-        self.encode_b = nn.Parameter(torch.randn(1, n_variables, self.kv_size))
+        self.encode_linear = nn.Linear(1, n_variables * self.kv_size)
+        self.encode_w = self.encode_linear.weight.view(n_variables, self.kv_size, 1)
+        self.encode_b = self.encode_linear.bias.view(1, n_variables, self.kv_size)
 
         # Hidden layer transformation per variable
-        self.upscale_w = nn.Parameter(torch.randn(n_variables, n_hidden, self.kv_size))
-        self.upscale_b = nn.Parameter(torch.randn(1, n_variables, n_hidden))
+        self.upscale_linear = nn.Linear(self.kv_size, n_variables * n_hidden)
+        self.upscale_w = self.upscale_linear.weight.view(n_variables, n_hidden, self.kv_size)
+        self.upscale_b = self.upscale_linear.bias.view(1, n_hidden, self.kv_size)
 
         # Final output transformation per variable
-        self.downscale_w = nn.Parameter(torch.randn(n_variables, self.kv_size, n_hidden))
-        self.downscale_b = nn.Parameter(torch.randn(1, n_variables, self.kv_size))
+        self.downscale_linear = nn.Linear(self.kv_size, n_variables * n_hidden)
+        self.downscale_w = self.downscale_linear.weight.view(n_variables, self.kv_size, n_hidden)
+        self.downscale_b = self.downscale_linear.bias.view(1, self.kv_size, n_hidden)
 
         # Define attention factor
         self.attention_factor = nn.Linear(1, 1, bias=False)
