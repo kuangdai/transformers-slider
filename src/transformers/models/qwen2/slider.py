@@ -64,8 +64,8 @@ class SliderModel(nn.Module):
         """
 
         # Move input to the same device and dtype as the model parameters
-        device = self.encode_w.device
-        dtype = self.encode_w.dtype
+        device = self.encode_linear.device
+        dtype = self.encode_linear.dtype
         prefix = prefix.to(device=device, dtype=dtype)
 
         # Reshape input to [batch_size, n_variables, 1] for matrix multiplication
