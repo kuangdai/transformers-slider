@@ -72,22 +72,22 @@ class SliderModel(nn.Module):
         prefix = prefix.unsqueeze(-1)  # Shape: [batch_size, n_variables, 1]
 
         # Independent linear transformation for each variable
-        encode_b = self.encode_linear.bias.view(1, self.n_variables, self.kv_size)
         encode_w = self.encode_linear.weight.view(self.n_variables, self.kv_size, 1)
+        encode_b = self.encode_linear.bias.view(1, self.n_variables, self.kv_size)
         slider_kv = torch.einsum("VKI,BVI->BVK", encode_w, prefix) + encode_b
         slider_kv = self.tanh(slider_kv)
         slider_kv = self.dropout(slider_kv)
 
         # Hidden layer transformation
-        upscale_b = self.upscale_linear.bias.view(1, self.n_variables, self.n_hidden)
         upscale_w = self.upscale_linear.weight.view(self.n_variables, self.n_hidden, self.kv_size)
+        upscale_b = self.upscale_linear.bias.view(1, self.n_variables, self.n_hidden)
         slider_kv = torch.einsum("VHK,BVK->BVH", upscale_w, slider_kv) + upscale_b
         slider_kv = self.tanh(slider_kv)
         slider_kv = self.dropout(slider_kv)
 
         # Final transformation
-        downscale_b = self.downscale_linear.bias.view(1, self.n_variables, self.kv_size)
         downscale_w = self.downscale_linear.weight.view(self.n_variables, self.kv_size, self.n_hidden)
+        downscale_b = self.downscale_linear.bias.view(1, self.n_variables, self.kv_size)
         slider_kv = torch.einsum("VKH,BVH->BVK", downscale_w, slider_kv) + downscale_b
 
         # Reshape to separate keys and values
