@@ -21,8 +21,7 @@ from ...image_processing_utils_fast import (
     BASE_IMAGE_PROCESSOR_FAST_DOCSTRING,
     BASE_IMAGE_PROCESSOR_FAST_DOCSTRING_PREPROCESS,
     BaseImageProcessorFast,
-    DefaultFastImageProcessorInitKwargs,
-    DefaultFastImageProcessorPreprocessKwargs,
+    DefaultFastImageProcessorKwargs,
     divide_to_patches,
     group_images_by_shape,
     reorder_images,
@@ -57,12 +56,7 @@ if is_torchvision_available():
         from torchvision.transforms import functional as F
 
 
-class LlavaNextFastImageProcessorInitKwargs(DefaultFastImageProcessorInitKwargs):
-    image_grid_pinpoints: Optional[List[List[int]]]
-    do_pad: Optional[bool]
-
-
-class LlavaNextFastImageProcessorPreprocessKwargs(DefaultFastImageProcessorPreprocessKwargs):
+class LlavaNextFastImageProcessorKwargs(DefaultFastImageProcessorKwargs):
     image_grid_pinpoints: Optional[List[List[int]]]
     do_pad: Optional[bool]
 
@@ -96,10 +90,9 @@ class LlavaNextImageProcessorFast(BaseImageProcessorFast):
     do_convert_rgb = True
     do_pad = True
     image_grid_pinpoints = [[336, 672], [672, 336], [672, 672], [1008, 336], [336, 1008]]
-    valid_init_kwargs = LlavaNextFastImageProcessorInitKwargs
-    valid_preprocess_kwargs = LlavaNextFastImageProcessorPreprocessKwargs
+    valid_kwargs = LlavaNextFastImageProcessorKwargs
 
-    def __init__(self, **kwargs: Unpack[LlavaNextFastImageProcessorInitKwargs]):
+    def __init__(self, **kwargs: Unpack[LlavaNextFastImageProcessorKwargs]):
         super().__init__(**kwargs)
 
     @add_start_docstrings(
@@ -109,13 +102,11 @@ class LlavaNextImageProcessorFast(BaseImageProcessorFast):
                 A list of possible resolutions to use for processing high resolution images. Each item in the list should be a tuple or list
                 of the form `(height, width)`.
             do_pad (`bool`, *optional*):
-                    Whether to pad the image. If `True`, will pad the patch dimension of the images in the batch to the largest
-                    number of patches in the batch. Padding will be applied to the bottom and right with zeros.
+                Whether to pad the image. If `True`, will pad the patch dimension of the images in the batch to the largest
+                number of patches in the batch. Padding will be applied to the bottom and right with zeros.
         """,
     )
-    def preprocess(
-        self, images: ImageInput, **kwargs: Unpack[LlavaNextFastImageProcessorPreprocessKwargs]
-    ) -> BatchFeature:
+    def preprocess(self, images: ImageInput, **kwargs: Unpack[LlavaNextFastImageProcessorKwargs]) -> BatchFeature:
         return super().preprocess(images, **kwargs)
 
     def _prepare_images_structure(
@@ -173,10 +164,10 @@ class LlavaNextImageProcessorFast(BaseImageProcessorFast):
         target_height, target_width = target_resolution
         new_height, new_width = get_patch_output_size(image, target_resolution, input_data_format)
 
-        paste_x = (target_width - new_width) // 2
-        paste_y = (target_height - new_height) // 2
+        paste_x, r_x = divmod(target_width - new_width, 2)
+        paste_y, r_y = divmod(target_height - new_height, 2)
 
-        padded_image = F.pad(image, padding=[paste_x, paste_y, paste_x, paste_y])
+        padded_image = F.pad(image, padding=[paste_x, paste_y, paste_x + r_x, paste_y + r_y])
 
         return padded_image
 
